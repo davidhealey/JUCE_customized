@@ -161,7 +161,11 @@ public:
     {
         if (! isEmptyString (b))
             if (--(b->refCount) == -1)
+            {
+                JUCE_BEGIN_IGNORE_WARNINGS_GCC_LIKE ("-Wfree-nonheap-object")
                 delete[] reinterpret_cast<char*> (b);
+                JUCE_END_IGNORE_WARNINGS_GCC_LIKE
+            }
     }
 
     static void release (const CharPointerType text) noexcept
@@ -216,7 +220,9 @@ private:
 
     static bool isEmptyString (StringHolder* other)
     {
+        JUCE_BEGIN_IGNORE_WARNINGS_GCC_LIKE ("-Wstringop-overflow")
         return (other->refCount.get() & 0x30000000) != 0;
+        JUCE_END_IGNORE_WARNINGS_GCC_LIKE
     }
 
     void compileTimeChecks()
