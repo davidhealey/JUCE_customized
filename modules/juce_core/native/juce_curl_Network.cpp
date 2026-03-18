@@ -372,9 +372,15 @@ public:
                 statusCode = static_cast<int> (responseCode);
 
             // get content length size
+           #if CURL_AT_LEAST_VERSION(7, 55, 0)
+            curl_off_t curlLength = -1;
+            if (symbols->curl_easy_getinfo (curl, CURLINFO_CONTENT_LENGTH_DOWNLOAD_T, &curlLength) == CURLE_OK)
+                contentLength = static_cast<int64> (curlLength);
+           #else
             double curlLength;
             if (symbols->curl_easy_getinfo (curl, CURLINFO_CONTENT_LENGTH_DOWNLOAD, &curlLength) == CURLE_OK)
                 contentLength = static_cast<int64> (curlLength);
+           #endif
         }
 
         return true;
