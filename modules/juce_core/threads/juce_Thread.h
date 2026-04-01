@@ -285,6 +285,21 @@ public:
     */
     bool startThread (Priority newPriority);
 
+    /** @deprecated Use startThread (Priority) instead.
+
+        Legacy overload that accepts an integer priority in the range 0 (lowest) to 10 (highest),
+        matching the old JUCE 6/7 API. The value is mapped to the nearest Priority enum value.
+    */
+    [[deprecated ("Use startThread (Priority) instead")]]
+    bool startThread (int legacyPriority)
+    {
+        if (legacyPriority <= 1)  return startThread (Priority::background);
+        if (legacyPriority <= 3)  return startThread (Priority::low);
+        if (legacyPriority <= 6)  return startThread (Priority::normal);
+        if (legacyPriority <= 8)  return startThread (Priority::high);
+        return startThread (Priority::highest);
+    }
+
     /** Starts the thread with realtime performance characteristics on platforms
         that support it.
 
