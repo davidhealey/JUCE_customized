@@ -105,7 +105,7 @@ protected:
         String getVST3BinaryLocationString() const         { return vst3BinaryLocation.get(); }
         String getUnityPluginBinaryLocationString() const  { return unityPluginBinaryLocation.get(); }
 
-    private:
+    protected:
         //==============================================================================
         ValueWithDefault architectureTypeValue, pluginBinaryCopyStepValue, vstBinaryLocation, vst3BinaryLocation, unityPluginBinaryLocation;
     };
@@ -124,7 +124,9 @@ public:
             : build_tools::ProjectType::Target (targetType), owner (exporter)
         {}
 
-        StringArray getCompilerFlags() const
+        virtual ~MakefileTarget() = default;
+
+        virtual StringArray getCompilerFlags() const
         {
             StringArray result;
 
@@ -137,7 +139,7 @@ public:
             return result;
         }
 
-        StringArray getLinkerFlags() const
+        virtual StringArray getLinkerFlags() const
         {
             StringArray result;
 
@@ -152,7 +154,7 @@ public:
             return result;
         }
 
-        StringPairArray getDefines (const BuildConfiguration& config) const
+        virtual StringPairArray getDefines (const BuildConfiguration& config) const
         {
             StringPairArray result;
             auto commonOptionKeys = owner.getAllPreprocessorDefs (config, build_tools::ProjectType::Target::unspecified).getAllKeys();
@@ -165,7 +167,7 @@ public:
             return result;
         }
 
-        StringArray getTargetSettings (const MakeBuildConfiguration& config) const
+        virtual StringArray getTargetSettings (const MakeBuildConfiguration& config) const
         {
             if (type == AggregateTarget) // the aggregate target should not specify any settings at all!
                 return {};               // it just defines dependencies on the other targets.
@@ -235,7 +237,7 @@ public:
             return s;
         }
 
-        String getTargetFileSuffix() const
+        virtual String getTargetFileSuffix() const
         {
             if (type == VSTPlugIn || type == VST3PlugIn || type == UnityPlugIn || type == DynamicLibrary)
                 return ".so";
@@ -262,7 +264,7 @@ public:
             out << newLine;
         }
 
-        void addFiles (OutputStream& out, const Array<std::pair<File, String>>& filesToCompile)
+        virtual void addFiles (OutputStream& out, const Array<std::pair<File, String>>& filesToCompile)
         {
             auto cppflagsVarName = "JUCE_CPPFLAGS_" + getTargetVarName();
             auto cflagsVarName   = "JUCE_CFLAGS_"   + getTargetVarName();
@@ -291,7 +293,7 @@ public:
             return String (getName()).upToFirstOccurrenceOf (" ", false, false);
         }
 
-        void writeTargetLine (OutputStream& out, const StringArray& packages)
+        virtual void writeTargetLine (OutputStream& out, const StringArray& packages)
         {
             jassert (type != AggregateTarget);
 
@@ -510,28 +512,6 @@ public:
 private:
     ValueWithDefault extraPkgConfigValue;
 
-    //==============================================================================
-    StringPairArray getDefines (const BuildConfiguration& config) const
-    {
-        StringPairArray result;
-
-        result.set ("LINUX", "1");
-
-        if (config.isDebug())
-        {
-            result.set ("DEBUG", "1");
-            result.set ("_DEBUG", "1");
-        }
-        else
-        {
-            result.set ("NDEBUG", "1");
-        }
-
-        result = mergePreprocessorDefs (result, getAllPreprocessorDefs (config, build_tools::ProjectType::Target::unspecified));
-
-        return result;
-    }
-
     StringArray getExtraPkgConfigPackages() const
     {
         auto packages = StringArray::fromTokens (extraPkgConfigValue.get().toString(), " ", "\"'");
@@ -576,7 +556,38 @@ private:
         return {};
     }
 
-    StringArray getCPreprocessorFlags (const BuildConfiguration&) const
+    void writePkgConfigFlags (OutputStream& out) const
+    {
+        auto flags = getPreprocessorPkgConfigFlags();
+
+        if (flags.isNotEmpty())
+            out << " " << flags;
+    }
+
+public:
+    //==============================================================================
+    virtual StringPairArray getDefines (const BuildConfiguration& config) const
+    {
+        StringPairArray result;
+
+        result.set ("LINUX", "1");
+
+        if (config.isDebug())
+        {
+            result.set ("DEBUG", "1");
+            result.set ("_DEBUG", "1");
+        }
+        else
+        {
+            result.set ("NDEBUG", "1");
+        }
+
+        result = mergePreprocessorDefs (result, getAllPreprocessorDefs (config, build_tools::ProjectType::Target::unspecified));
+
+        return result;
+    }
+
+    virtual StringArray getCPreprocessorFlags (const BuildConfiguration&) const
     {
         StringArray result;
 
@@ -690,14 +701,6 @@ private:
     void writeDefineFlags (OutputStream& out, const MakeBuildConfiguration& config) const
     {
         out << createGCCPreprocessorFlags (mergePreprocessorDefs (getDefines (config), getAllPreprocessorDefs (config, build_tools::ProjectType::Target::unspecified)));
-    }
-
-    void writePkgConfigFlags (OutputStream& out) const
-    {
-        auto flags = getPreprocessorPkgConfigFlags();
-
-        if (flags.isNotEmpty())
-            out << " " << flags;
     }
 
     void writeCPreprocessorFlags (OutputStream& out, const BuildConfiguration& config) const
@@ -1033,7 +1036,9 @@ private:
 
     friend class CLionProjectExporter;
 
+public:
     OwnedArray<MakefileTarget> targets;
 
+private:
     JUCE_DECLARE_NON_COPYABLE (MakefileProjectExporter)
 };

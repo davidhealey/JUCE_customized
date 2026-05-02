@@ -26,6 +26,8 @@
 #include "../../Application/jucer_Headers.h"
 #include "../../ProjectSaving/jucer_ProjectSaver.h"
 #include "../../ProjectSaving/jucer_ProjectExport_Xcode.h"
+#include "../../ProjectSaving/jucer_ProjectExport_Make.h"
+#include "../../ProjectSaving/jucer_ProjectExport_MacMake.h"
 #include "../../Application/jucer_Application.h"
 
 //==============================================================================
@@ -146,6 +148,21 @@ void LibraryModule::addLibsToExporter (ProjectExporter& exporter) const
     {
         parseAndAddLibsToList (exporter.linuxLibs, moduleInfo.getModuleInfo() ["linuxLibs"].toString());
         parseAndAddLibsToList (exporter.linuxPackages, moduleInfo.getModuleInfo() ["linuxPackages"].toString());
+    }
+    else if (exporter.isOSX() && exporter.isMakefile())
+    {
+        auto& macMakeExporter = dynamic_cast<MacOSMakefileProjectExporter&> (exporter);
+
+        if (project.isAUPluginHost())
+        {
+            macMakeExporter.osxFrameworks.add ("CoreAudioKit");
+            macMakeExporter.osxFrameworks.add ("AudioUnit");
+        }
+
+        auto frameworks = moduleInfo.getModuleInfo() ["OSXFrameworks"].toString();
+        macMakeExporter.osxFrameworks.addTokens (frameworks, ", ", {});
+
+        parseAndAddLibsToList (macMakeExporter.osxLibs, moduleInfo.getModuleInfo() ["OSXLibs"].toString());
     }
     else if (exporter.isWindows())
     {
