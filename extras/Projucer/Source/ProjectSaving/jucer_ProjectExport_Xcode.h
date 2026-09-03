@@ -1837,6 +1837,7 @@ public:
             options.iconFile                         = owner.iconFile;
             options.projectName                      = owner.projectName;
             options.version							 = owner.project.getVersionString();
+            options.versionAsHex                     = owner.project.getVersionAsHexInteger();
             options.currentProjectVersion            = owner.getBuildNumber();
             options.companyCopyright                 = owner.project.getCompanyCopyrightString();
             options.allPreprocessorDefs              = owner.getAllPreprocessorDefs();
