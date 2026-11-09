@@ -145,6 +145,7 @@ struct KeyFileUtils
     static String getLicensee (const XmlElement& xml)       { return xml.getStringAttribute ("user"); }
     static String getEmail (const XmlElement& xml)          { return xml.getStringAttribute ("email"); }
     static String getAppID (const XmlElement& xml)          { return xml.getStringAttribute ("app"); }
+    static Time   getCreationDate(const XmlElement& xml)    { return Time(xml.getStringAttribute("date").substring(2).getHexValue64() * 1000); }
 
     struct KeyFileData
     {
@@ -153,6 +154,7 @@ struct KeyFileUtils
 
         bool keyFileExpires;
         Time expiryTime;
+        Time creationDate;
     };
 
     static KeyFileData getDataFromKeyFile (XmlElement xml)
@@ -162,6 +164,7 @@ struct KeyFileUtils
         data.licensee = getLicensee (xml);
         data.email = getEmail (xml);
         data.appID = getAppID (xml);
+        data.creationDate = getCreationDate(xml);
 
         if (xml.hasAttribute ("expiryTime") && xml.hasAttribute ("expiring_mach"))
         {
@@ -183,6 +186,7 @@ struct KeyFileUtils
 #if JUCE_MODULE_AVAILABLE_juce_data_structures
 const char* OnlineUnlockStatus::unlockedProp = "u";
 const char* OnlineUnlockStatus::expiryTimeProp = "t";
+const char* OnlineUnlockStatus::creationTimeProp = "ct";
 static const char* stateTagName = "REG";
 static const char* userNameProp = "user";
 static const char* keyfileDataProp = "key";
@@ -342,6 +346,15 @@ void OnlineUnlockStatus::userCancelled()
 {
 }
 
+bool OnlineUnlockStatus::checkLicenseRefresh(Time verifiedTimeObject)
+{
+    auto cd = getCreationDate();
+    auto ok = cd > verifiedTimeObject;
+    
+    status.setProperty(unlockedProp, var(ok), nullptr);
+    return ok;
+}
+
 bool OnlineUnlockStatus::unlockWithTime(Time safeTimeObject)
 {
 	Time times[2] = { getExpiryTime(), safeTimeObject };
@@ -383,6 +396,7 @@ bool OnlineUnlockStatus::applyKeyFile (String keyFileContent)
         setUserEmail (data.email);
         status.setProperty (keyfileDataProp, keyFileContent, nullptr);
         status.removeProperty (data.keyFileExpires ? expiryTimeProp : unlockedProp, nullptr);
+        status.setProperty(creationTimeProp, data.creationDate.toMilliseconds(), nullptr);
 
         var actualResult (0), dummyResult (1.0);
         var v (machineNumberAllowed (data.machineNumbers, getLocalMachineIDs()));

@@ -42,7 +42,7 @@ namespace juce
     X(var,      "var")      X(if_,     "if")     X(else_,  "else")   X(do_,       "do")       X(null_,     "null") \
     X(while_,   "while")    X(for_,    "for")    X(break_, "break")  X(continue_, "continue") X(undefined, "undefined") \
     X(function, "function") X(return_, "return") X(true_,  "true")   X(false_,    "false")    X(new_,      "new") \
-    X(typeof_,  "typeof")
+    X(typeof_,  "typeof")   X(in_, "in")         X(import_, "import")
 
 namespace TokenTypes
 {
@@ -71,6 +71,7 @@ struct JavascriptEngine::RootObject   : public DynamicObject
     }
 
     Time timeout;
+    ImportResolver::List importResolvers;
 
     using Args = const var::NativeFunctionArgs&;
     using TokenType = const char*;
@@ -315,6 +316,52 @@ struct JavascriptEngine::RootObject   : public DynamicObject
 
         ResultCode perform (const Scope& s, var* returnedValue) const override
         {
+            if(isInLoop)
+            {
+                Identifier iteratorId;
+                
+                if(auto un = dynamic_cast<UnqualifiedName*>(iterator.get()))
+                    iteratorId = un->name;
+                else
+                    location.throwError("Iterator needs to be a variable Id");
+                
+                if(auto exp = dynamic_cast<Expression*>(initialiser.get()))
+                {
+                    auto iteratedObject = exp->getResult(s);
+                    
+                    if(auto ar = iteratedObject.getArray())
+                    {
+                        for(const auto& v: *ar)
+                        {
+                            s.scope->setProperty(iteratorId, v);
+                            
+                            s.checkTimeOut (location);
+                            auto r = body->perform (s, returnedValue);
+
+                            if (r == returnWasHit)   return r;
+                            if (r == breakWasHit)    break;
+                        }
+                    }
+                    
+                    if(auto obj = iteratedObject.getDynamicObject())
+                    {
+                        for(const auto& nv: obj->getProperties())
+                        {
+                            s.scope->setProperty(iteratorId, nv.name.toString());
+                            
+                            s.checkTimeOut (location);
+                            auto r = body->perform (s, returnedValue);
+
+                            if (r == returnWasHit)   return r;
+                            if (r == breakWasHit)    break;
+                        }
+                            
+                    }
+                }
+                
+                return ok;
+            }
+            
             initialiser->perform (s, nullptr);
 
             while (isDoLoop || condition->getResult (s))
@@ -337,6 +384,7 @@ struct JavascriptEngine::RootObject   : public DynamicObject
         std::unique_ptr<Statement> initialiser, iterator, body;
         ExpPtr condition;
         bool isDoLoop;
+        bool isInLoop = false;
     };
 
     struct ReturnStatement  : public Statement
@@ -831,6 +879,45 @@ struct JavascriptEngine::RootObject   : public DynamicObject
         OwnedArray<Expression> values;
     };
 
+    struct ImportStatement: public Statement
+    {
+        ImportStatement(const CodeLocation& l, Expression* pathExpression):
+          Statement(l),
+          importPath(pathExpression)
+        {};
+        
+        ResultCode perform(const Scope& s, var* returnedValue) const override
+        {
+            String path, importedCode;
+            
+            if(importPath != nullptr)
+                path = importPath->getResult(s).toString();
+            
+            if(path.isEmpty())
+                location.throwError("import path is empty");
+            
+            for(auto i: s.root->importResolvers)
+            {
+                if(i->resolveImport(path, importedCode))
+                {
+                    try
+                    {
+                        s.root->execute(importedCode);
+                        return ok;
+                    }
+                    catch(String& s)
+                    {
+                        location.throwError("Error at importing " + path + ": " + s);
+                    }
+                }
+            }
+            
+            location.throwError("Can't resolve import " + path);
+        }
+        
+        ExpPtr importPath;
+    };
+    
     //==============================================================================
     struct FunctionObject  : public DynamicObject
     {
@@ -870,6 +957,7 @@ struct JavascriptEngine::RootObject   : public DynamicObject
         std::unique_ptr<Statement> body;
     };
 
+    
     //==============================================================================
     struct TokenIterator
     {
@@ -1132,6 +1220,20 @@ struct JavascriptEngine::RootObject   : public DynamicObject
             match (TokenTypes::closeBrace);
             return b.release();
         }
+        
+        ImportStatement* parseImport()
+        {
+            match(TokenTypes::openParen);
+            
+            ExpPtr pathExpr(parseExpression());
+                        
+            std::unique_ptr<ImportStatement> b(new ImportStatement(location, pathExpr.release()));
+            
+            match(TokenTypes::closeParen);
+            match(TokenTypes::semicolon);
+            
+            return b.release();
+        }
 
         Statement* parseStatement()
         {
@@ -1148,6 +1250,7 @@ struct JavascriptEngine::RootObject   : public DynamicObject
             if (matchIf (TokenTypes::semicolon))        return new Statement (location);
             if (matchIf (TokenTypes::plusplus))         return parsePreIncDec<AdditionOp>();
             if (matchIf (TokenTypes::minusminus))       return parsePreIncDec<SubtractionOp>();
+            if (matchIf (TokenTypes::import_))          return parseImport();
 
             if (matchesAny (TokenTypes::openParen, TokenTypes::openBracket))
                 return matchEndOfStatement (parseFactor());
@@ -1159,7 +1262,19 @@ struct JavascriptEngine::RootObject   : public DynamicObject
             return nullptr;
         }
 
-        Expression* matchEndOfStatement (Expression* ex)  { ExpPtr e (ex); if (currentType != TokenTypes::eof) match (TokenTypes::semicolon); return e.release(); }
+        Expression* matchEndOfStatement (Expression* ex)
+        {
+            ExpPtr e (ex);
+            
+            if(currentType == TokenTypes::in_)
+                return e.release();
+            
+            if (currentType != TokenTypes::eof)
+                match (TokenTypes::semicolon);
+            
+            return e.release();
+            
+        }
         Expression* matchCloseParen (Expression* ex)      { ExpPtr e (ex); match (TokenTypes::closeParen); return e.release(); }
 
         Statement* parseIf()
@@ -1219,6 +1334,17 @@ struct JavascriptEngine::RootObject   : public DynamicObject
             match (TokenTypes::openParen);
             s->initialiser.reset (parseStatement());
 
+            if(matchIf(TokenTypes::in_))
+            {
+                s->isInLoop = true;
+                
+                s->iterator.reset(parseExpression());
+                std::swap(s->iterator, s->initialiser);
+                match(TokenTypes::closeParen);
+                s->body.reset (parseStatement());
+                return s.release();
+            }
+            
             if (matchIf (TokenTypes::semicolon))
                 s->condition.reset (new LiteralValue (location, true));
             else
@@ -1966,6 +2092,11 @@ var JavascriptEngine::callFunctionObject (DynamicObject* objectScope, const var&
 const NamedValueSet& JavascriptEngine::getRootObjectProperties() const noexcept
 {
     return root->getProperties();
+}
+
+void JavascriptEngine::addImportResolver(JavascriptEngine::ImportResolver::Ptr newImportResolver)
+{
+    root->importResolvers.add(newImportResolver);
 }
 
 JUCE_END_IGNORE_WARNINGS_MSVC

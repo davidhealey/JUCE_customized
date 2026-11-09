@@ -111,11 +111,24 @@ public:
     /** Provides access to the set of properties of the root namespace object. */
     const NamedValueSet& getRootObjectProperties() const noexcept;
 
+    struct ImportResolver: public ReferenceCountedObject
+    {
+        using Ptr = ReferenceCountedObjectPtr<ImportResolver>;
+        using List = ReferenceCountedArray<ImportResolver>;
+        
+        virtual ~ImportResolver() {};
+        
+        /** Override this function and return true and fill in the string. */
+        virtual bool resolveImport(const String& path, String& importedCode) = 0;
+    };
+    
+    void addImportResolver(ImportResolver::Ptr newImportResolver);
+    
 private:
     JUCE_PUBLIC_IN_DLL_BUILD (struct RootObject)
     const ReferenceCountedObjectPtr<RootObject> root;
     void prepareTimeout() const noexcept;
-
+    
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (JavascriptEngine)
 };
 

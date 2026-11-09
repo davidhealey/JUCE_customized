@@ -145,6 +145,14 @@ public:
     */
     inline var isUnlocked() const               { return status[unlockedProp]; }
 
+    inline var checkNonce(int n1, int n2)
+    {
+        if (n1 != n2)
+            status.setProperty(unlockedProp, false, nullptr);
+
+        return n1 != n2;
+    }
+
     inline var contains(const String& otherString)
     {
 		auto s = getPublicKey().toString().fromFirstOccurrenceOf(",", false, false);
@@ -164,6 +172,15 @@ public:
         be used for subscription based models or trial periods.
     */
     inline Time getExpiryTime() const           { return Time (static_cast<int64> (status[expiryTimeProp])); }
+
+    /** Returns the time when the keyfile was created. 
+    
+        This is independent of the expiry time and allows you to perform low-security checks whether the license
+        should be refreshed or not in order to implement the ability of revoking licenses.
+    */
+    inline Time getCreationDate() const         { return Time(static_cast<int64> (status[creationTimeProp])); }
+
+    bool checkLicenseRefresh(Time verifiedTimeObject);
 
 	/** Attempts to unlock a license with an expiration date using a Time object that is verified in some way.
 		The function returns true if the expiration date is later than the supplied time object.
@@ -307,6 +324,7 @@ private:
 
     static const char* unlockedProp;
     static const char* expiryTimeProp;
+    static const char* creationTimeProp;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (OnlineUnlockStatus)
 };
