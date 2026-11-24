@@ -41,11 +41,11 @@ struct WindowsHooks
         if (numHookUsers++ == 0)
         {
             mouseWheelHook = SetWindowsHookEx (WH_MOUSE, mouseWheelHookCallback,
-                                               (HINSTANCE) juce::Process::getCurrentModuleInstanceHandle(),
+                                               nullptr,
                                                GetCurrentThreadId());
 
             keyboardHook = SetWindowsHookEx (WH_GETMESSAGE, keyboardHookCallback,
-                                             (HINSTANCE) juce::Process::getCurrentModuleInstanceHandle(),
+                                             nullptr,
                                              GetCurrentThreadId());
         }
     }
